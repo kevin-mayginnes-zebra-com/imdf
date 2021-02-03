@@ -1,26 +1,41 @@
 package com.mappedin.sdkv3_examples
 
-import androidx.appcompat.app.AppCompatActivity
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Bundle
-import android.os.Handler
 import android.view.View
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
 import com.bumptech.glide.Glide
+import com.indooratlas.android.sdk.IALocation
+import com.indooratlas.android.sdk.IALocationListener
+import com.indooratlas.android.sdk.IALocationManager
+import com.indooratlas.android.sdk.IALocationRequest
 import com.mappedin.sdk.listeners.MPIMapViewListener
 import com.mappedin.sdk.models.*
 import com.mappedin.sdk.web.MPIOptions
 import kotlinx.android.synthetic.main.activity_main.*
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+
 
 class MainActivity : AppCompatActivity() {
     var sortedMaps: List<MPIMap>? = null
     var blueDot: MPIBlueDot? = null
     var selectedPolygon: MPINavigatable.MPIPolygon? = null
+    private final val CODE_PERMISSIONS = 1
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        val neededPermissions = arrayOf<String>(
+                Manifest.permission.CHANGE_WIFI_STATE,
+                Manifest.permission.ACCESS_WIFI_STATE,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+                Manifest.permission.ACCESS_FINE_LOCATION
+        )
+        ActivityCompat.requestPermissions(this, neededPermissions, CODE_PERMISSIONS)
 
         increaseFloor.setOnClickListener {
             changeMap(true)
@@ -88,26 +103,35 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onFirstMapLoaded() {
-                runOnUiThread {
-                    val fileName = "position.json"
-                    val string = application.assets.open(fileName).bufferedReader().use {
-                        it.readText()
-                    }.toString()
-                    println(string.replace("\n", ""))
-
-                    val positions = Json.decodeFromString<List<MPIPosition>>(string)
-                    val handler = Handler()
-                    positions.forEachIndexed { index, position ->
-                        handler.postDelayed({
-                            mapView.updatePosition(position)
-                        }, (3000*index).toLong())
-                    }
-                }
             }
         }
 
         //Load venue with credentials, if using proxy pass in MPIOptions.Init(noAuth = true, venue="venue_name", baseUrl="proxy_url")
         mapView.loadVenue(MPIOptions.Init("5eab30aa91b055001a68e996", "RJyRXKcryCMy4erZqqCbuB1NbR66QTGNXVE0x3Pg6oCIlUR1", "mappedin-demo-mall"))
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+
+        if (grantResults.any { it == PackageManager.PERMISSION_DENIED}) return
+
+        var mLocationManager = IALocationManager.create(this);
+
+        val mIALocationListener: IALocationListener = object : IALocationListener {
+            // Called when the location has changed.
+            override fun onLocationChanged(location: IALocation) {
+                val position = MPIPosition(0.0, MPIPosition.MPICoordinates(location.latitude,
+                        location.longitude, location.accuracy.toDouble(),location.floorLevel), "n","a")
+                mapView.updatePosition(position)
+            }
+
+            override fun onStatusChanged(p0: String?, p1: Int, p2: Bundle?) {
+                //TODO("Not yet implemented")
+            }
+        }
+
+        mLocationManager.requestLocationUpdates(IALocationRequest.create(), mIALocationListener);
+
     }
 
     fun clearPolygon() {
